@@ -1,0 +1,21 @@
+# Requirements for Peptide Enrichment Analysis Script
+# Install with: pip install -r requirements.txt
+
+# Core scientific computing
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Bioinformatics
+biopython>=1.79
+
+# Statistical analysis
+statsmodels>=0.12.0
+
+# Excel file reading
+openpyxl>=3.0.9
+
+# Optional: For enhanced data analysis and visualization
+# Uncomment these if you want additional features
+# matplotlib>=3.5.0
+# seaborn>=0.11.0

@@ -1,0 +1,12 @@
+UBR3 Peptide Screen Enrichment Analysis
+==================================================
+
+Total genes in screen: 53
+Genes with sequences found: 49
+Genes not found in proteome: 4
+
+Genes not found in proteome:
+- THEG
+- C17orf51
+- KIAA1211
+- CU633980.2
