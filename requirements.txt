@@ -1,4 +1,4 @@
-# Requirements for Peptide Enrichment Analysis Script
+# Requirements for Peptide Enrichment Analysis Script with Visualizations
 # Install with: pip install -r requirements.txt
 
 # Core scientific computing
@@ -15,7 +15,6 @@ statsmodels>=0.12.0
 # Excel file reading
 openpyxl>=3.0.9
 
-# Optional: For enhanced data analysis and visualization
-# Uncomment these if you want additional features
-# matplotlib>=3.5.0
-# seaborn>=0.11.0
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0

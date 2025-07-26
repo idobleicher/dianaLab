@@ -141,10 +141,5 @@ human_proteome.fasta
 .RData
 .Ruserdata
 
-# Statistical output
-*.png
-*.jpg
-*.jpeg
-*.pdf
 plots/
 figures/

@@ -29,6 +29,9 @@ from collections import Counter
 from scipy.stats import fisher_exact
 import pandas as pd
 from statsmodels.stats.multitest import multipletests
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 import os
 import sys
 import re
@@ -353,6 +356,212 @@ def save_results_to_csv(df_second, df_third, screen_genes, not_found_genes,
         print(f"Error saving results: {e}")
 
 
+def create_enrichment_heatmap(df_second, df_third, output_dir="outputs"):
+    """
+    Create a heatmap visualization of amino acid enrichment at positions 2 and 3.
+
+    Args:
+        df_second (DataFrame): Results for second position
+        df_third (DataFrame): Results for third position
+        output_dir (str): Directory to save the heatmap
+    """
+    try:
+        # Set up the plotting style
+        plt.style.use('default')
+        sns.set_palette("husl")
+
+        # Create matrix for heatmap
+        amino_acids = sorted("ACDEFGHIKLMNPQRSTVWY")
+        positions = ["Second", "Third"]
+
+        # Initialize matrices
+        enrichment_matrix = np.zeros((len(positions), len(amino_acids)))
+        significance_matrix = np.zeros((len(positions), len(amino_acids)), dtype=bool)
+
+        # Fill matrices with data
+        for i, pos_df in enumerate([df_second, df_third]):
+            for j, aa in enumerate(amino_acids):
+                row = pos_df[pos_df['Amino_Acid'] == aa]
+                if not row.empty:
+                    enrichment_ratio = row['Fold_Enrichment'].iloc[0]
+                    is_significant = row['Significant'].iloc[0]
+
+                    # Handle infinite values
+                    if np.isinf(enrichment_ratio):
+                        enrichment_ratio = 10.0  # Cap at 10x for visualization
+                    elif np.isnan(enrichment_ratio):
+                        enrichment_ratio = 1.0
+
+                    enrichment_matrix[i, j] = enrichment_ratio
+                    significance_matrix[i, j] = is_significant
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(16, 6))
+
+        # Create heatmap with diverging colormap centered at 1.0
+        # Log transform the enrichment ratios for better visualization
+        log_enrichment = np.log2(enrichment_matrix)
+
+        # Determine color scale limits (symmetric around 0 in log space)
+        max_abs_log = np.max(np.abs(log_enrichment[np.isfinite(log_enrichment)]))
+        vmin, vmax = -max_abs_log, max_abs_log
+
+        # Create heatmap
+        im = ax.imshow(log_enrichment, cmap='RdBu_r', aspect='auto', vmin=vmin, vmax=vmax)
+
+        # Set ticks and labels
+        ax.set_xticks(range(len(amino_acids)))
+        ax.set_xticklabels(amino_acids)
+        ax.set_yticks(range(len(positions)))
+        ax.set_yticklabels(positions)
+
+        # Add text annotations
+        for i in range(len(positions)):
+            for j in range(len(amino_acids)):
+                # Get the actual enrichment value
+                enrichment_val = enrichment_matrix[i, j]
+                is_sig = significance_matrix[i, j]
+
+                # Format the text
+                if enrichment_val == 0:
+                    text = "N/A"
+                    color = 'gray'
+                elif enrichment_val >= 10:
+                    text = f"≥10.0{'*' if is_sig else ''}"
+                    color = 'white' if log_enrichment[i, j] > 1 else 'black'
+                else:
+                    text = f"{enrichment_val:.2f}{'*' if is_sig else ''}"
+                    color = 'white' if abs(log_enrichment[i, j]) > 1 else 'black'
+
+                ax.text(j, i, text, ha="center", va="center",
+                        fontsize=10, color=color, weight='bold' if is_sig else 'normal')
+
+        # Customize the plot
+        ax.set_xlabel('Amino Acid', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Position in Protein', fontsize=14, fontweight='bold')
+        ax.set_title(
+            'UBR3 Screen: Amino Acid Enrichment at Positions 2 & 3\n(Values = Screen Frequency ÷ Proteome Frequency)',
+            fontsize=16, fontweight='bold', pad=20)
+
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax, shrink=0.8, aspect=20)
+        cbar.set_label('Log₂(Enrichment Ratio)', rotation=270, labelpad=20, fontsize=12, fontweight='bold')
+
+        # Add custom colorbar ticks for interpretation
+        tick_positions = [-3, -2, -1, 0, 1, 2, 3]
+        tick_labels = ['1/8', '1/4', '1/2', '1', '2', '4', '8']
+        cbar.set_ticks(tick_positions)
+        cbar.set_ticklabels(tick_labels)
+
+        # Add legend
+        legend_text = (
+            "Interpretation:\n"
+            "• Red = Enriched (more frequent in screen)\n"
+            "• Blue = Depleted (less frequent in screen)\n"
+            "• White = No change (same as proteome)\n"
+            "• * = Statistically significant (p < 0.05)\n"
+            "• Values show fold-change vs. human proteome"
+        )
+
+        ax.text(1.02, 0.5, legend_text, transform=ax.transAxes, fontsize=10,
+                verticalalignment='center', bbox=dict(boxstyle="round,pad=0.5",
+                                                      facecolor='lightgray', alpha=0.8))
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Save the plot
+        os.makedirs(output_dir, exist_ok=True)
+        heatmap_file = f"{output_dir}/UBR3_enrichment_heatmap.png"
+        plt.savefig(heatmap_file, dpi=300, bbox_inches='tight')
+
+        # Also save as PDF for publication quality
+        pdf_file = f"{output_dir}/UBR3_enrichment_heatmap.pdf"
+        plt.savefig(pdf_file, bbox_inches='tight')
+
+        print(f"Heatmap saved to {heatmap_file}")
+        print(f"High-resolution PDF saved to {pdf_file}")
+
+        # Show plot if running interactively
+        plt.show()
+
+        # Create a simple frequency comparison bar plot
+        create_frequency_comparison_plot(df_second, df_third, output_dir)
+
+    except Exception as e:
+        print(f"Error creating heatmap: {e}")
+
+
+def create_frequency_comparison_plot(df_second, df_third, output_dir="outputs"):
+    """
+    Create bar plots comparing screen vs proteome frequencies.
+    """
+    try:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 12))
+
+        amino_acids = sorted("ACDEFGHIKLMNPQRSTVWY")
+
+        # Second position plot
+        screen_freqs_2nd = []
+        proteome_freqs_2nd = []
+        for aa in amino_acids:
+            row = df_second[df_second['Amino_Acid'] == aa]
+            if not row.empty:
+                screen_freqs_2nd.append(row['Freq_Screen'].iloc[0])
+                proteome_freqs_2nd.append(row['Freq_Proteome'].iloc[0])
+            else:
+                screen_freqs_2nd.append(0)
+                proteome_freqs_2nd.append(0)
+
+        x = np.arange(len(amino_acids))
+        width = 0.35
+
+        bars1 = ax1.bar(x - width / 2, screen_freqs_2nd, width, label='UBR3 Screen', color='red', alpha=0.7)
+        bars2 = ax1.bar(x + width / 2, proteome_freqs_2nd, width, label='Human Proteome', color='blue', alpha=0.7)
+
+        ax1.set_xlabel('Amino Acid')
+        ax1.set_ylabel('Frequency')
+        ax1.set_title('Second Position: Amino Acid Frequencies')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(amino_acids)
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # Third position plot
+        screen_freqs_3rd = []
+        proteome_freqs_3rd = []
+        for aa in amino_acids:
+            row = df_third[df_third['Amino_Acid'] == aa]
+            if not row.empty:
+                screen_freqs_3rd.append(row['Freq_Screen'].iloc[0])
+                proteome_freqs_3rd.append(row['Freq_Proteome'].iloc[0])
+            else:
+                screen_freqs_3rd.append(0)
+                proteome_freqs_3rd.append(0)
+
+        bars3 = ax2.bar(x - width / 2, screen_freqs_3rd, width, label='UBR3 Screen', color='red', alpha=0.7)
+        bars4 = ax2.bar(x + width / 2, proteome_freqs_3rd, width, label='Human Proteome', color='blue', alpha=0.7)
+
+        ax2.set_xlabel('Amino Acid')
+        ax2.set_ylabel('Frequency')
+        ax2.set_title('Third Position: Amino Acid Frequencies')
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(amino_acids)
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        comparison_file = f"{output_dir}/UBR3_frequency_comparison.png"
+        plt.savefig(comparison_file, dpi=300, bbox_inches='tight')
+        print(f"Frequency comparison plot saved to {comparison_file}")
+
+        plt.show()
+
+    except Exception as e:
+        print(f"Error creating frequency comparison plot: {e}")
+
+
 def main():
     """Main function to run the enrichment analysis."""
     print("=" * 80)
@@ -520,16 +729,27 @@ def main():
     print("\nStep 7: Saving results...")
     save_results_to_csv(results_second, results_third, screen_genes, not_found_genes)
 
+    # Create visualizations
+    print("\nStep 8: Creating visualizations...")
+    create_enrichment_heatmap(results_second, results_third)
+
     print("\n" + "=" * 80)
     print("ANALYSIS COMPLETE!")
     print("=" * 80)
     print(f"Analyzed {len(screen_sequences)} proteins from your UBR3 screen")
     print(f"against {len(all_proteome_sequences)} proteins in the human proteome")
+    print("\nFiles created:")
+    print("• outputs/UBR3_enrichment_results.csv - Complete statistical results")
+    print("• outputs/UBR3_enrichment_summary.csv - Simplified enrichment ratios")
+    print("• outputs/UBR3_enrichment_results_metadata.txt - Analysis metadata")
+    print("• outputs/UBR3_enrichment_heatmap.png - Visual heatmap of enrichments")
+    print("• outputs/UBR3_enrichment_heatmap.pdf - Publication-quality heatmap")
+    print("• outputs/UBR3_frequency_comparison.png - Side-by-side frequency comparison")
     print("\nInterpretation guide:")
     print("- Fold_Enrichment > 1: Amino acid is more frequent in your screen than in proteome")
     print("- Fold_Enrichment < 1: Amino acid is less frequent in your screen than in proteome")
     print("- FDR_P_Value < 0.05: Statistically significant result")
-    print("- Check the 'Significant' column for amino acids with reliable enrichment/depletion")
+    print("- Red in heatmap = Enriched, Blue = Depleted, * = Significant")
 
 
 if __name__ == "__main__":
