@@ -81,12 +81,6 @@ peptide_sequences.txt
 peptides.txt
 screen_results.txt
 
-# Output files
-enrichment_results.csv
-*_results.csv
-*_analysis.csv
-results/
-output/
 
 # Temporary files
 temp/
